@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>Snake · Spielewelt</title>
@@ -42,6 +42,40 @@
       -webkit-background-clip: text; background-clip: text;
       -webkit-text-fill-color: transparent;
     }
+
+    .speed-select {
+      display: inline-flex;
+      gap: 0.3rem;
+      padding: 0.3rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      margin-bottom: 1.25rem;
+    }
+    .speed-select button {
+      padding: 0.45rem 1rem;
+      font-size: 0.85rem;
+      box-shadow: none;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      border-radius: 999px;
+    }
+    .speed-select button:hover {
+      background: var(--surface);
+      color: var(--text);
+      transform: none;
+    }
+    .speed-select button.active {
+      background: var(--surface);
+      color: var(--text);
+      border-color: var(--border);
+      box-shadow: var(--shadow-sm);
+    }
+    .speed-select button.active.fast { color: var(--danger); }
+    .speed-select button.active.normal { color: var(--accent); }
+    .speed-select button.active.slow { color: var(--success); }
+
     .game-wrap {
       position: relative;
       border-radius: 20px;
@@ -76,14 +110,32 @@
       margin-top: 0.5rem;
       box-shadow: 0 8px 24px rgba(91, 108, 255, 0.5);
     }
-    .dpad {
-      display: none; grid-template-areas: ". up ." "left . right" ". down ."; gap: 0.4rem;
-      margin-top: 1rem;
+
+    .dpad-wrap {
+      margin-top: 1.5rem;
+      display: flex;
+      justify-content: center;
     }
-    .dpad button { width: 56px; height: 56px; padding: 0; font-size: 1.3rem; justify-content: center; }
+    .dpad {
+      display: grid;
+      grid-template-areas: ". up ." "left . right" ". down .";
+      gap: 0.5rem;
+    }
+    .dpad button {
+      width: 64px; height: 64px;
+      padding: 0;
+      font-size: 1.4rem;
+      justify-content: center;
+      font-weight: 700;
+      color: var(--text-2);
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+    .dpad button:hover { color: var(--accent); }
+    .dpad button:active { transform: scale(0.92); background: var(--accent); color: #fff; border-color: transparent; }
     .dpad .up { grid-area: up; } .dpad .down { grid-area: down; }
     .dpad .left { grid-area: left; } .dpad .right { grid-area: right; }
-    @media (hover: none) and (pointer: coarse) { .dpad { display: grid; } }
   </style>
 </head>
 <body>
@@ -103,37 +155,48 @@
       <span class="value" id="score">0</span>
     </div>
     <div class="stat best">
-      <span class="label">Beste</span>
+      <span class="label">Best</span>
       <span class="value" id="best">0</span>
     </div>
     <div class="stat">
-      <span class="label">Geschwindigkeit</span>
-      <span class="value" id="speed">1×</span>
+      <span class="label">Length</span>
+      <span class="value" id="length">3</span>
     </div>
+  </div>
+
+  <div class="speed-select" role="tablist" aria-label="Speed">
+    <button class="slow" data-speed="180">🐢 Slow</button>
+    <button class="normal active" data-speed="120">🚶 Normal</button>
+    <button class="fast" data-speed="75">⚡ Fast</button>
+    <button class="fast" data-speed="45">🔥 Insane</button>
   </div>
 
   <div class="game-wrap">
     <canvas id="game" width="400" height="400"></canvas>
     <div class="overlay" id="overlay">
-      <h2 id="ov-title">Bereit?</h2>
-      <p id="ov-text">Drücke Start oder eine Pfeiltaste</p>
+      <h2 id="ov-title">Ready?</h2>
+      <p id="ov-text">Press Start or any arrow key</p>
       <button class="primary" onclick="startGame()">▶ Start</button>
     </div>
   </div>
 
   <div class="controls">
-    <button onclick="startGame()">↻ Neu starten</button>
+    <button onclick="startGame()">↻ Restart</button>
     <button id="pause-btn" onclick="togglePause()">⏸ Pause</button>
   </div>
 
-  <div class="dpad">
-    <button class="up" onclick="setDir(0,-1)">▲</button>
-    <button class="left" onclick="setDir(-1,0)">◄</button>
-    <button class="right" onclick="setDir(1,0)">►</button>
-    <button class="down" onclick="setDir(0,1)">▼</button>
+  <div class="dpad-wrap">
+    <div class="dpad">
+      <button class="up" onpointerdown="setDir(0,-1)">▲</button>
+      <button class="left" onpointerdown="setDir(-1,0)">◄</button>
+      <button class="right" onpointerdown="setDir(1,0)">►</button>
+      <button class="down" onpointerdown="setDir(0,1)">▼</button>
+    </div>
   </div>
 
-  <p class="hint" style="margin-top:1.2rem;">Pfeiltasten oder WASD zum Steuern · Leertaste pausiert</p>
+  <p class="hint" style="margin-top:1.2rem;">
+    Arrow keys or WASD · Space to pause · Swipe on mobile
+  </p>
 
   <script>
     const canvas = document.getElementById('game');
@@ -141,9 +204,24 @@
     const GRID = 20;
     const CELL = canvas.width / GRID;
 
-    let snake, dir, nextDir, food, score, best, running, paused, tickTimer, speed, baseSpeed = 130;
+    let snake, dir, nextDir, food, score, best, running, paused, tickTimer;
+    let speed = parseInt(localStorage.getItem('snake-speed') || '120');
     best = parseInt(localStorage.getItem('snake-best') || '0');
     document.getElementById('best').textContent = best;
+
+    document.querySelectorAll('.speed-select button').forEach(btn => {
+      const btnSpeed = parseInt(btn.dataset.speed);
+      if (btnSpeed === speed) {
+        document.querySelectorAll('.speed-select button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.speed-select button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        speed = btnSpeed;
+        localStorage.setItem('snake-speed', speed);
+      });
+    });
 
     function reset() {
       snake = [{x:10,y:10},{x:9,y:10},{x:8,y:10}];
@@ -151,9 +229,7 @@
       nextDir = {x:1,y:0};
       placeFood();
       score = 0;
-      speed = baseSpeed;
       updateScore();
-      updateSpeed();
     }
 
     function placeFood() {
@@ -165,16 +241,12 @@
 
     function updateScore() {
       document.getElementById('score').textContent = score;
+      document.getElementById('length').textContent = snake.length;
       if (score > best) {
         best = score;
         localStorage.setItem('snake-best', best);
         document.getElementById('best').textContent = best;
       }
-    }
-
-    function updateSpeed() {
-      const mult = (baseSpeed / speed).toFixed(1);
-      document.getElementById('speed').textContent = mult + '×';
     }
 
     function tick() {
@@ -187,25 +259,20 @@
         score++;
         updateScore();
         placeFood();
-        if (speed > 55) speed -= 3;
-        updateSpeed();
       } else {
         snake.pop();
+        updateScore();
       }
       draw();
     }
 
     function draw() {
-      // background
       ctx.fillStyle = '#0f172a';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      // subtle grid
       ctx.fillStyle = 'rgba(255,255,255,0.025)';
       for (let x=0; x<GRID; x++) for (let y=0; y<GRID; y++) {
         if ((x+y)%2===0) ctx.fillRect(x*CELL, y*CELL, CELL, CELL);
       }
-
-      // food (animated glow)
       const fx = food.x*CELL + CELL/2, fy = food.y*CELL + CELL/2;
       const pulse = (Math.sin(Date.now()/200) + 1) / 2;
       ctx.shadowBlur = 18 + pulse * 6;
@@ -220,7 +287,6 @@
       ctx.fill();
       ctx.shadowBlur = 0;
 
-      // snake
       snake.forEach((seg, i) => {
         const isHead = i === 0;
         const t = i / Math.max(snake.length-1, 1);
@@ -230,10 +296,9 @@
           ctx.fillStyle = '#00d4ff';
         } else {
           ctx.shadowBlur = 0;
-          // gradient body from cyan to purple
           const r = Math.round(91 + (0 - 91) * (1-t));
           const g = Math.round(108 + (212 - 108) * (1-t));
-          const b = Math.round(255 + (255 - 255) * (1-t));
+          const b = 255;
           ctx.fillStyle = `rgb(${r},${g},${b})`;
         }
         const x = seg.x*CELL, y = seg.y*CELL;
@@ -271,13 +336,6 @@
       tickTimer = setTimeout(loop, speed);
     }
 
-    let drawLoopActive = false;
-    function continuousDraw() {
-      if (running && !paused) draw();
-      requestAnimationFrame(continuousDraw);
-    }
-    if (!drawLoopActive) { drawLoopActive = true; continuousDraw(); }
-
     function startGame() {
       reset();
       running = true;
@@ -293,30 +351,32 @@
       running = false;
       document.getElementById('ov-title').textContent = 'Game Over';
       const isBest = score === best && score > 0;
-      document.getElementById('ov-text').textContent = `Score: ${score}` + (isBest ? ' · Neue Bestleistung! 🏆' : '');
+      document.getElementById('ov-text').textContent = `Score: ${score}` + (isBest ? ' · New best! 🏆' : '');
       document.getElementById('overlay').style.display = 'flex';
     }
 
     function togglePause() {
       if (!running) return;
       paused = !paused;
-      document.getElementById('pause-btn').textContent = paused ? '▶ Weiter' : '⏸ Pause';
+      document.getElementById('pause-btn').textContent = paused ? '▶ Resume' : '⏸ Pause';
       if (!paused) loop();
     }
 
     function setDir(x, y) {
-      if (!running) startGame();
+      if (!running) { startGame(); }
       if (dir.x === -x && dir.y === -y) return;
       nextDir = {x, y};
     }
 
     document.addEventListener('keydown', e => {
       if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
-      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') setDir(0,-1);
-      else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') setDir(0,1);
-      else if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') setDir(-1,0);
-      else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') setDir(1,0);
+      const k = e.key.toLowerCase();
+      if (e.key === 'ArrowUp' || k === 'w') setDir(0,-1);
+      else if (e.key === 'ArrowDown' || k === 's') setDir(0,1);
+      else if (e.key === 'ArrowLeft' || k === 'a') setDir(-1,0);
+      else if (e.key === 'ArrowRight' || k === 'd') setDir(1,0);
       else if (e.key === ' ') togglePause();
+      else if (k === 'r') startGame();
     });
 
     let touchStart = null;

@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Schach · Spielewelt</title>
+  <title>Chess · Spielewelt</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <link rel="stylesheet" href="../game.css">
@@ -71,20 +71,20 @@
 <body>
   <div class="topbar">
     <a class="back" href="../index.html">← Spielewelt</a>
-    <div class="pill"><span class="dot"></span> Schach</div>
+    <div class="pill"><span class="dot"></span> Chess</div>
   </div>
 
   <div class="game-title">
     <span class="icon">♟️</span>
-    <h1>Schach</h1>
+    <h1>Chess</h1>
   </div>
 
   <div id="menu" class="card">
-    <h2>Wie möchtest du spielen?</h2>
+    <h2>How would you like to play?</h2>
     <div class="stack">
-      <button class="primary" onclick="startLocal()">👥 Lokal · 2 Spieler an einem Gerät</button>
-      <button onclick="showHost()">🌐 Online-Spiel erstellen</button>
-      <button onclick="showJoin()">🔗 Online-Spiel beitreten</button>
+      <button class="primary" onclick="startLocal()">👥 Local · 2 players on one device</button>
+      <button onclick="showHost()">🌐 Create online game</button>
+      <button onclick="showJoin()">🔗 Join online game</button>
     </div>
   </div>
 
@@ -92,12 +92,12 @@
 
   <div id="game-area">
     <div class="pill" id="status" style="margin-bottom: 1.2rem;">
-      <span class="dot"></span> Weiß ist am Zug
+      <span class="dot"></span> White to move
     </div>
     <div id="board"></div>
     <div class="controls">
-      <button id="reset">↻ Neues Spiel</button>
-      <button onclick="leaveGame()">← Menü</button>
+      <button id="reset">↻ New game</button>
+      <button onclick="leaveGame()">← Menu</button>
     </div>
   </div>
 
@@ -136,8 +136,8 @@
     }
 
     function updateStatus() {
-      let txt = (turn === 'w' ? 'Weiß' : 'Schwarz') + ' ist am Zug';
-      if (mode === 'online') txt += turn === myColor ? ' (du)' : ' (Gegner)';
+      let txt = (turn === 'w' ? 'White' : 'Black') + ' to move';
+      if (mode === 'online') txt += turn === myColor ? ' (you)' : ' (opponent)';
       setStatus(txt);
     }
 
@@ -361,11 +361,11 @@
       const inCheck = k && isSquareAttacked(board, k[0], k[1], opp);
       if (moves.length === 0) {
         gameOver = true;
-        setStatus(inCheck ? `Schachmatt! ${turn === 'w' ? 'Schwarz' : 'Weiß'} gewinnt 🏆` : 'Patt – Remis');
+        setStatus(inCheck ? `Checkmate! ${turn === 'w' ? 'Black' : 'White'} wins 🏆` : 'Stalemate – Draw');
       } else {
-        let txt = (turn === 'w' ? 'Weiß' : 'Schwarz') + ' ist am Zug';
-        if (mode === 'online') txt += turn === myColor ? ' (du)' : ' (Gegner)';
-        if (inCheck) txt += ' · Schach!';
+        let txt = (turn === 'w' ? 'White' : 'Black') + ' to move';
+        if (mode === 'online') txt += turn === myColor ? ' (you)' : ' (opponent)';
+        if (inCheck) txt += ' · Check!';
         setStatus(txt);
       }
     }
@@ -387,18 +387,18 @@
       const lobby = document.getElementById('lobby');
       document.getElementById('menu').style.display = 'none';
       lobby.style.display = 'block';
-      lobby.innerHTML = '<h2>Spiel wird erstellt…</h2><p>Verbinde mit PeerJS…</p>';
+      lobby.innerHTML = '<h2>Creating game…</h2><p>Connecting to PeerJS…</p>';
       peer = new Peer();
       peer.on('open', id => {
         lobby.innerHTML = `
-          <h2>Online-Spiel erstellt</h2>
-          <p>Sende diesen Code an deinen Gegner</p>
+          <h2>Online game created</h2>
+          <p>Send this code to your opponent</p>
           <div class="code-box">${id}</div>
           <div class="stack">
-            <button class="primary" onclick="copyCode('${id}')">📋 Code kopieren</button>
-            <button onclick="leaveGame()">Abbrechen</button>
+            <button class="primary" onclick="copyCode('${id}')">📋 Copy code</button>
+            <button onclick="leaveGame()">Cancel</button>
           </div>
-          <p class="hint">Du spielst Weiß. Warte auf den Gegner…</p>
+          <p class="hint">You play White. Waiting for opponent…</p>
         `;
       });
       peer.on('connection', c => {
@@ -406,7 +406,7 @@
         conn.on('open', () => { showGameArea(); initGame(); conn.send({ type: 'start' }); });
       });
       peer.on('error', err => {
-        lobby.innerHTML = `<h2>Fehler</h2><p>${err.message || err}</p><button onclick="leaveGame()">Zurück</button>`;
+        lobby.innerHTML = `<h2>Error</h2><p>${err.message || err}</p><button onclick="leaveGame()">Back</button>`;
       });
     }
 
@@ -416,12 +416,12 @@
       document.getElementById('menu').style.display = 'none';
       lobby.style.display = 'block';
       lobby.innerHTML = `
-        <h2>Spiel beitreten</h2>
-        <p>Gib den Code deines Gegners ein</p>
+        <h2>Join game</h2>
+        <p>Enter your opponent's code</p>
         <input type="text" id="join-code" placeholder="abc-123-xyz…" autofocus>
         <div class="stack">
-          <button class="primary" onclick="doJoin()">Verbinden</button>
-          <button onclick="leaveGame()">Abbrechen</button>
+          <button class="primary" onclick="doJoin()">Connect</button>
+          <button onclick="leaveGame()">Cancel</button>
         </div>
       `;
     }
@@ -430,7 +430,7 @@
       const code = document.getElementById('join-code').value.trim();
       if (!code) return;
       const lobby = document.getElementById('lobby');
-      lobby.innerHTML = '<h2>Verbinde…</h2><p>Stelle Verbindung zum Host her…</p>';
+      lobby.innerHTML = '<h2>Connecting…</h2><p>Reaching the host…</p>';
       peer = new Peer();
       peer.on('open', () => {
         conn = peer.connect(code, { reliable: true });
@@ -438,7 +438,7 @@
         conn.on('open', () => { showGameArea(); initGame(); });
       });
       peer.on('error', err => {
-        lobby.innerHTML = `<h2>Fehler</h2><p>${err.message || err}</p><button onclick="leaveGame()">Zurück</button>`;
+        lobby.innerHTML = `<h2>Error</h2><p>${err.message || err}</p><button onclick="leaveGame()">Back</button>`;
       });
     }
 
@@ -447,11 +447,11 @@
         if (data.type === 'move') performMove(data.from, data.to, data.move);
         else if (data.type === 'reset') initGame();
       });
-      conn.on('close', () => { setStatus('Verbindung getrennt'); gameOver = true; });
+      conn.on('close', () => { setStatus('Connection lost'); gameOver = true; });
     }
 
     function copyCode(code) {
-      navigator.clipboard.writeText(code).then(() => alert('Code kopiert!'));
+      navigator.clipboard.writeText(code).then(() => alert('Code copied!'));
     }
 
     function leaveGame() {

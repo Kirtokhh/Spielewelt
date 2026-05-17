@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Schiffe versenken · Spielewelt</title>
+  <title>Battleship · Spielewelt</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <link rel="stylesheet" href="../game.css">
   <style>
     :root {
@@ -29,6 +30,11 @@
       border-radius: var(--radius-lg);
       padding: 1.25rem;
       box-shadow: var(--shadow-md);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .board-wrap.active {
+      border-color: rgba(91, 108, 255, 0.45);
+      box-shadow: var(--shadow-lg);
     }
     .board-wrap h3 {
       font-family: 'Plus Jakarta Sans', sans-serif;
@@ -144,6 +150,7 @@
       line-height: 1.6;
     }
     .legend strong { color: var(--text); font-weight: 600; }
+    #game-area { display: none; flex-direction: column; align-items: center; width: 100%; }
     @media (max-width: 800px) {
       .board { grid-template-columns: repeat(10, 26px); grid-template-rows: repeat(10, 26px); }
       .cell { width: 26px; height: 26px; font-size: 12px; }
@@ -155,56 +162,70 @@
 <body>
   <div class="topbar">
     <a class="back" href="../index.html">← Spielewelt</a>
-    <div class="pill"><span class="dot"></span> Schiffe versenken</div>
+    <div class="pill"><span class="dot"></span> Battleship</div>
   </div>
 
   <div class="game-title">
     <span class="icon">🚢</span>
-    <h1>Schiffe versenken</h1>
+    <h1>Battleship</h1>
   </div>
 
-  <div class="pill" id="status" style="margin-bottom: 1.5rem;">
-    <span class="dot"></span> Klicke ins gegnerische Meer, um zu schießen
-  </div>
-
-  <div class="boards">
-    <div class="board-wrap enemy">
-      <h3><span class="indicator"></span> Gegnerische Flotte</h3>
-      <div class="board" id="enemy-board"></div>
-      <div class="ships-status" id="enemy-ships"></div>
-    </div>
-    <div class="board-wrap">
-      <h3><span class="indicator"></span> Deine Flotte</h3>
-      <div class="board no-click" id="player-board"></div>
-      <div class="ships-status" id="player-ships"></div>
+  <div id="menu" class="card">
+    <h2>How would you like to play?</h2>
+    <div class="stack">
+      <button class="primary" onclick="startSolo()">🤖 Solo · vs AI</button>
+      <button onclick="showHost()">🌐 Create online game</button>
+      <button onclick="showJoin()">🔗 Join online game</button>
     </div>
   </div>
 
-  <div class="controls">
-    <button class="primary" onclick="newGame()">↻ Neues Spiel</button>
-  </div>
+  <div id="lobby" class="card" style="display:none;"></div>
 
-  <p class="legend">
-    <strong>Flotte:</strong> 1× Schlachtschiff (5) · 1× Kreuzer (4) · 2× Zerstörer (3) · 1× U-Boot (2)<br>
-    Triff alle Schiffe deines Gegners, bevor er deine versenkt. Nach einem Treffer bist du nochmal dran.
-  </p>
+  <div id="game-area">
+    <div class="pill" id="status" style="margin-bottom: 1.5rem;">
+      <span class="dot"></span> Click the enemy waters to fire
+    </div>
+    <div class="boards">
+      <div class="board-wrap enemy" id="enemy-wrap">
+        <h3><span class="indicator"></span> Enemy fleet</h3>
+        <div class="board" id="enemy-board"></div>
+        <div class="ships-status" id="enemy-ships"></div>
+      </div>
+      <div class="board-wrap" id="player-wrap">
+        <h3><span class="indicator"></span> Your fleet</h3>
+        <div class="board no-click" id="player-board"></div>
+        <div class="ships-status" id="player-ships"></div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="primary" onclick="restartGame()">↻ New game</button>
+      <button onclick="leaveGame()">← Menu</button>
+    </div>
+    <p class="legend" id="legend">
+      <strong>Fleet:</strong> 1× Carrier (5) · 1× Battleship (4) · 2× Destroyer (3) · 1× Submarine (2)<br>
+      Hit all enemy ships before they sink yours. After a hit you fire again.
+    </p>
+  </div>
 
   <script>
     const SIZE = 10;
     const FLEET = [
-      { name: 'Schlachtschiff', size: 5 },
-      { name: 'Kreuzer', size: 4 },
-      { name: 'Zerstörer', size: 3 },
-      { name: 'Zerstörer', size: 3 },
-      { name: 'U-Boot', size: 2 }
+      { name: 'Carrier', size: 5 },
+      { name: 'Battleship', size: 4 },
+      { name: 'Destroyer', size: 3 },
+      { name: 'Destroyer', size: 3 },
+      { name: 'Submarine', size: 2 }
     ];
+    const AI_DELAY = 1400;
 
     let playerBoard, enemyBoard, playerShips, enemyShips, gameOver, aiState;
+    let mode = null;       // 'solo' | 'online'
+    let myTurn = false;
+    let peer = null, conn = null;
+    let isHost = false;
 
     function makeEmpty() {
-      return Array.from({length: SIZE}, () => Array.from({length: SIZE}, () => ({
-        ship: null, hit: false
-      })));
+      return Array.from({length: SIZE}, () => Array.from({length: SIZE}, () => ({ ship: null, hit: false })));
     }
 
     function placeFleet(board) {
@@ -239,19 +260,51 @@
       return ships;
     }
 
-    function newGame() {
+    function initBoards() {
       playerBoard = makeEmpty();
       enemyBoard = makeEmpty();
       playerShips = placeFleet(playerBoard);
       enemyShips = placeFleet(enemyBoard);
       gameOver = false;
       aiState = { mode: 'hunt', hits: [], queue: [] };
-      setStatus('Klicke ins gegnerische Meer, um zu schießen');
+    }
+
+    function showGameArea() {
+      document.getElementById('menu').style.display = 'none';
+      document.getElementById('lobby').style.display = 'none';
+      document.getElementById('game-area').style.display = 'flex';
+    }
+
+    function startSolo() {
+      mode = 'solo';
+      initBoards();
+      myTurn = true;
+      setStatus('Your turn — click the enemy waters to fire');
+      updateActive();
+      showGameArea();
       render();
+    }
+
+    function restartGame() {
+      if (mode === 'solo') {
+        startSolo();
+      } else if (mode === 'online' && conn && conn.open) {
+        initBoards();
+        myTurn = isHost;
+        setStatus(myTurn ? 'New game — your turn' : 'New game — opponent\'s turn');
+        updateActive();
+        render();
+        conn.send({ type: 'reset', hostStarts: true });
+      }
     }
 
     function setStatus(text) {
       document.getElementById('status').innerHTML = '<span class="dot"></span> ' + text;
+    }
+
+    function updateActive() {
+      document.getElementById('enemy-wrap').classList.toggle('active', myTurn && !gameOver);
+      document.getElementById('player-wrap').classList.toggle('active', !myTurn && !gameOver);
     }
 
     function shipsStatus(ships, elId) {
@@ -286,33 +339,48 @@
             if (s.ship.hits >= s.ship.size) cell.classList.add('sunk');
           } else cell.classList.add('miss');
         }
-        if (id === 'enemy-board' && !gameOver) cell.addEventListener('click', () => playerShot(r, c));
+        if (id === 'enemy-board' && !gameOver && myTurn) {
+          cell.addEventListener('click', () => playerShot(r, c));
+        }
         el.appendChild(cell);
       }
     }
 
     function playerShot(r, c) {
-      if (gameOver) return;
+      if (gameOver || !myTurn) return;
       const cell = enemyBoard[r][c];
       if (cell.hit) return;
-      cell.hit = true;
-      if (cell.ship) {
-        cell.ship.hits++;
-        if (cell.ship.hits >= cell.ship.size) {
-          setStatus(`🎯 Versenkt: ${cell.ship.name}!`);
-          markSunkSurround(enemyBoard, cell.ship);
+
+      if (mode === 'solo') {
+        cell.hit = true;
+        if (cell.ship) {
+          cell.ship.hits++;
+          if (cell.ship.hits >= cell.ship.size) {
+            setStatus(`🎯 You sunk their ${cell.ship.name}!`);
+            markSunkSurround(enemyBoard, cell.ship);
+          } else {
+            setStatus('💥 Hit! Fire again.');
+          }
+          if (enemyShips.every(s => s.hits >= s.size)) {
+            gameOver = true;
+            setStatus('🏆 Victory! You sunk the enemy fleet.');
+          }
+          render();
+          updateActive();
         } else {
-          setStatus('💥 Treffer! Du bist nochmal dran.');
+          setStatus('Miss. Enemy is taking aim…');
+          render();
+          myTurn = false;
+          updateActive();
+          setTimeout(enemyTurn, AI_DELAY);
         }
-        render();
-        if (enemyShips.every(s => s.hits >= s.size)) {
-          gameOver = true;
-          setStatus('🏆 Sieg! Du hast die gegnerische Flotte versenkt.');
-        }
-      } else {
-        setStatus('Daneben. Gegner ist am Zug…');
-        render();
-        setTimeout(enemyTurn, 700);
+      } else if (mode === 'online') {
+        // tentatively reveal — actual result comes from opponent
+        cell.tentative = true;
+        myTurn = false;
+        setStatus('Shot fired… waiting for result');
+        updateActive();
+        conn.send({ type: 'shot', r, c });
       }
     }
 
@@ -336,24 +404,27 @@
         cell.ship.hits++;
         aiState.hits.push(target);
         if (cell.ship.hits >= cell.ship.size) {
-          setStatus(`💀 Gegner hat dein ${cell.ship.name} versenkt!`);
+          setStatus(`💀 Enemy sunk your ${cell.ship.name}!`);
           aiState.mode = 'hunt'; aiState.hits = []; aiState.queue = [];
           markSunkSurround(playerBoard, cell.ship);
         } else {
           aiState.mode = 'target';
           queueAdjacent(target);
-          setStatus('💥 Gegner hat getroffen!');
+          setStatus('💥 Enemy hit your ship!');
         }
         render();
         if (playerShips.every(s => s.hits >= s.size)) {
           gameOver = true;
-          setStatus('💀 Niederlage. Deine Flotte wurde versenkt.');
+          setStatus('💀 Defeat. Your fleet was destroyed.');
+          updateActive();
           return;
         }
-        setTimeout(enemyTurn, 700);
+        setTimeout(enemyTurn, AI_DELAY);
       } else {
-        setStatus('Gegner daneben. Du bist dran!');
+        setStatus('Enemy missed. Your turn!');
         render();
+        myTurn = true;
+        updateActive();
       }
     }
 
@@ -398,7 +469,192 @@
       }
     }
 
-    newGame();
+    // ===== Online =====
+    function showHost() {
+      mode = 'online'; isHost = true;
+      const lobby = document.getElementById('lobby');
+      document.getElementById('menu').style.display = 'none';
+      lobby.style.display = 'block';
+      lobby.innerHTML = '<h2>Creating game…</h2><p>Connecting to PeerJS…</p>';
+      peer = new Peer();
+      peer.on('open', id => {
+        lobby.innerHTML = `
+          <h2>Online game created</h2>
+          <p>Send this code to your opponent</p>
+          <div class="code-box">${id}</div>
+          <div class="stack">
+            <button class="primary" onclick="copyCode('${id}')">📋 Copy code</button>
+            <button onclick="leaveGame()">Cancel</button>
+          </div>
+          <p class="hint">You start the match. Waiting for opponent…</p>
+        `;
+      });
+      peer.on('connection', c => {
+        conn = c;
+        setupConn();
+        conn.on('open', () => {
+          initBoards();
+          myTurn = true;
+          conn.send({ type: 'start', hostStarts: true });
+          showGameArea();
+          setStatus('Opponent connected — your turn');
+          updateActive();
+          render();
+        });
+      });
+      peer.on('error', err => {
+        lobby.innerHTML = `<h2>Error</h2><p>${err.message || err}</p><button onclick="leaveGame()">Back</button>`;
+      });
+    }
+
+    function showJoin() {
+      mode = 'online'; isHost = false;
+      const lobby = document.getElementById('lobby');
+      document.getElementById('menu').style.display = 'none';
+      lobby.style.display = 'block';
+      lobby.innerHTML = `
+        <h2>Join game</h2>
+        <p>Enter your opponent's code</p>
+        <input type="text" id="join-code" placeholder="abc-123-xyz…" autofocus>
+        <div class="stack">
+          <button class="primary" onclick="doJoin()">Connect</button>
+          <button onclick="leaveGame()">Cancel</button>
+        </div>
+      `;
+    }
+
+    function doJoin() {
+      const code = document.getElementById('join-code').value.trim();
+      if (!code) return;
+      const lobby = document.getElementById('lobby');
+      lobby.innerHTML = '<h2>Connecting…</h2><p>Reaching the host…</p>';
+      peer = new Peer();
+      peer.on('open', () => {
+        conn = peer.connect(code, { reliable: true });
+        setupConn();
+        conn.on('open', () => {
+          initBoards();
+          myTurn = false;
+          showGameArea();
+          setStatus('Connected — opponent\'s turn');
+          updateActive();
+          render();
+        });
+      });
+      peer.on('error', err => {
+        lobby.innerHTML = `<h2>Error</h2><p>${err.message || err}</p><button onclick="leaveGame()">Back</button>`;
+      });
+    }
+
+    function setupConn() {
+      conn.on('data', data => {
+        if (data.type === 'shot') handleIncomingShot(data.r, data.c);
+        else if (data.type === 'result') handleIncomingResult(data);
+        else if (data.type === 'reset') {
+          initBoards();
+          myTurn = !isHost ? false : (data.hostStarts ? !isHost : isHost);
+          // host always starts on reset
+          myTurn = isHost;
+          setStatus(myTurn ? 'New game — your turn' : 'New game — opponent\'s turn');
+          updateActive();
+          render();
+        } else if (data.type === 'start') {
+          // ignore, handled at connection open
+        }
+      });
+      conn.on('close', () => {
+        setStatus('Connection lost');
+        gameOver = true;
+        updateActive();
+      });
+    }
+
+    function handleIncomingShot(r, c) {
+      // opponent shoots at our board
+      const cell = playerBoard[r][c];
+      cell.hit = true;
+      let resp = { type: 'result', r, c, hit: false };
+      if (cell.ship) {
+        cell.ship.hits++;
+        resp.hit = true;
+        if (cell.ship.hits >= cell.ship.size) {
+          resp.sunk = { name: cell.ship.name, cells: cell.ship.cells };
+          markSunkSurround(playerBoard, cell.ship);
+        }
+      }
+      conn.send(resp);
+      render();
+
+      // check if we lost
+      if (playerShips.every(s => s.hits >= s.size)) {
+        gameOver = true;
+        setStatus('💀 Defeat. Your fleet was destroyed.');
+        conn.send({ type: 'gameover' });
+        updateActive();
+        return;
+      }
+
+      if (resp.hit) {
+        setStatus(`💥 Opponent hit you${resp.sunk ? ` and sunk your ${resp.sunk.name}!` : '!'} — they fire again`);
+        myTurn = false;
+      } else {
+        setStatus('Opponent missed — your turn');
+        myTurn = true;
+      }
+      updateActive();
+    }
+
+    function handleIncomingResult(data) {
+      // our shot result
+      const cell = enemyBoard[data.r][data.c];
+      cell.hit = true;
+      delete cell.tentative;
+      if (data.hit) {
+        // create a virtual ship cell on enemy board
+        if (!cell.ship) {
+          // find or create the matching ship from sunk info
+          if (data.sunk) {
+            const ship = enemyShips.find(s => s.name === data.sunk.name && s.cells.length === 0)
+                       || { name: data.sunk.name, size: data.sunk.cells.length, hits: 0, cells: [] };
+            ship.cells = data.sunk.cells;
+            ship.hits = ship.cells.length;
+            data.sunk.cells.forEach(([sr,sc]) => {
+              enemyBoard[sr][sc].ship = ship;
+              enemyBoard[sr][sc].hit = true;
+            });
+            markSunkSurround(enemyBoard, ship);
+            // ensure ship is tracked
+            if (!enemyShips.includes(ship)) enemyShips.push(ship);
+            // clean placeholder ships of same name with no cells
+            enemyShips = enemyShips.filter(s => s.cells.length > 0 || s === ship);
+            setStatus(`🎯 You sunk their ${ship.name}! Fire again`);
+          } else {
+            cell.ship = { tentative: true };
+            setStatus('💥 Hit! Fire again');
+          }
+        }
+        myTurn = true;
+      } else {
+        setStatus('Miss. Opponent\'s turn');
+        myTurn = false;
+      }
+      render();
+      updateActive();
+    }
+
+    function copyCode(code) {
+      navigator.clipboard.writeText(code).then(() => alert('Code copied!'));
+    }
+
+    function leaveGame() {
+      if (conn) { try { conn.close(); } catch(e){} conn = null; }
+      if (peer) { try { peer.destroy(); } catch(e){} peer = null; }
+      mode = null;
+      gameOver = true;
+      document.getElementById('menu').style.display = 'block';
+      document.getElementById('lobby').style.display = 'none';
+      document.getElementById('game-area').style.display = 'none';
+    }
   </script>
 </body>
 </html>
